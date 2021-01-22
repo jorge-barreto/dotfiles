@@ -1,0 +1,27 @@
+# ignore everything
+**
+
+# don't ignore the following
+!.config/
+!.config/*.sh
+!.config/*/
+!.config/bpytop**
+.config/bpytop/*log
+!.config/Code/User/snippets/erb.json
+!.config/Code/User/keybindings.json
+!.config/Code/User/settings.json
+!.config/conky/config
+!.config/dunst**
+!.config/i3**
+!.config/redshift**
+!.config/rofi**
+!.config/scripts/**
+
+!.bashrc
+!.inputrc
+!.vimrc
+!.rc
+
+!/README.md
+!.gitignore
+!.gitconfig
