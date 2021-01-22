@@ -9,13 +9,14 @@
 [alias]
   # alias-related aliases
 	explain = "!f() { : git alias ;\nif [[ $# -ne 1 ]]; then\n  echo explain usage: exactly one term must be passed;\n  exit 1;\nfi\n\nTERM=`git config --get alias.\"$1\"`\n\nif [[ -z $TERM ]]; then\n  echo Alias not found.;\n  exit 1;\nfi\n\necho -e \"\\033[0;31m\\t$1\\033[0m\"\necho \"${TERM}\";\n}; f"
-	e = "!f() { : git alias ;\ngit explain $@;\n}; f"
+	e = "!f() { : git alias ;\ngit explain $@;\n}; f" # pretty-print an alias' substitution
 	explain-short = "!f() { : git alias ;\ngit e $@ | tail --lines +2; }; f"
-	exs = explain-short
+	exs = explain-short # pretty-print an alias' substitution, without the title (used internally)
 	explain-all = !git config --list | grep -oP '(?<=alias\\.).*?(?==)' | less -R
-	ee = explain-all
+	ee = explain-all # list all aliases
+	list-all = explain-all # list all aliases
 	explain-all-verbose = !git config --list | grep -oP '(?<=alias\\.).*(?==)' | xargs -d\\\\n -n1 git e | less -R
-	eee = explain-all-verbose
+	eee = explain-all-verbose # pretty-print all aliases' substitutions with titles
 	set = "!f() { #!/bin/bash\n\nif [ $# -ne 2 ] ; then\n  echo 'set usage: exactly two terms must be passed in as arguments.';\n  exit 1;\nfi\n\ngit config --global alias.\"$1\" \"$2\" && git explain $1 || echo \"Alias not set.\" && exit 1; }; f"
 	unset = "!f() { : git alias ;\n\nif [ $# -ne 1 ] ; then\n  echo 'unset usage: exactly one term must be passed in as an argument.';\n  exit 1;\nfi\n\ngit config --global --unset alias.\"$1\"; }; f"
 	rename-alias = "!f() { : git alias ;\nTERM=`git explain-short $1`;\ngit set \"$2\" \"$TERM\";\ngit unset \"$1\";\n}; f"
@@ -24,21 +25,41 @@
 	ed = "!f() { : git alias ;\ngit edit-alias $@;\n}; f"
   # wrap-sh to be used to (un)wrap an alias pointing to a shell script into an "!f() {...}; f" style alias
 	wrap-sh = "!f() {\nTERM=\"$(git e $1 | grep -oP \\(\\?\\<=\\!\\).*\\.sh)\";\n\nif [[ -z $TERM ]]; then echo \"wrap-sh usage: one existing file-wrapper alias must be passed in\"; exit 1; fi\nif [[ ! -e $TERM ]]; then echo \"file $TERM not found\"; exit 1; fi\n\nSCRIPT=`cat \"$TERM\"`; SC=';'; \ngit set $1 \"!f() { $SCRIPT }$SC f\";}; f"
+	alias-stats = "!f() {\n  declare -A alias_map;\n  declare -A count_map;\n  local aliases=( $(git explain-all) );\n  local arr_count=0;\n\n  for alias in ${aliases[@]}; do\n    count=$(git count $alias);\n    alias_map[$alias]=${count};\n\n    if [[ -z \"${count_map[${count}]}\" ]]; then\n      count_map[${count}]=$alias;\n    else\n      if [[ -n \"`echo \"${count_map[${count}]}\" | grep -P 'arr\\d+'`\" ]]; then\n        # this value points to an array\n\ttemp=${!count_map[${count}]};\n\ttemp+=( $alias );\n        eval ${count_map[${count}]}=\\${temp[@]}; \n        unset temp;\n      else\n        var=\"arr${arr_count}\";\n        declare -a ${var};\n        current_alias=${count_map[${count}]};\n\n        count_map[${count}]=${var};\n\ttemp=${!var};\n\ttemp+=( \"${current_alias}\" $alias );\n        eval ${var}=\\${temp[@]};\n        unset temp;\n        ((arr_count+=1));\n      fi\n    fi\n  done\n\n\n  local sorted_counts=( `for key in \"${!count_map[@]}\"; do echo \"${key}\"; done | sort -n --reverse;` );\n\n\n  for i in $(seq 0 $(( ${#count_map[@]} - 1 ))); do\n    count=${sorted_counts[$i]};\n    key=${count_map[$count]};\n    if [[ -n \"`echo \"${key}\" | grep -P 'arr\\d+'`\" ]]; then\n      for alias in \"${!key}\"; do\n        echo ${alias}: ${count};\n      done      \n    else\n      echo ${key}: ${count};\n    fi\n  done\n\n  unset count_map alias_map sorted_aliases aliases;\n}; f"
+	count = "!f() { : git alias ;\nif [[ $# -ne 1 ]]; then\n  echo count usage: exactly one alias must be passed;\n  exit 1;\nfi\n\nCOUNT=`cat ~/.bash_history | grep -P \"git $1\\b\" -c`;\necho ${COUNT};\n\nexit 0;\n}; f"
+	top = "!f() {\n  git alias-stats | head -${1:-5};\n}; f" # top N used aliases
 
   # ease-of-use
-	re = reset
 	co = checkout
 	cob = co --track -b
-	cb = branch --show-current
+	current-branch = branch --show-current
+	cb = current-branch
 	po = !git push origin `git cb`
+	l = log
+	which-branch = name-rev
+	s = status
+	ls = s
+	cp = cherry-pick
+	br = branch
+	b = branch
+	rl = reflog
+	rb = rebase
+	# resets
+	r = reset
+	re = reset
+	ro = !git reset --hard origin/`git cb`
+	reh = "!f() { : git branch ;\n echo moving from: `git rev-parse --short HEAD`;\n git reset --hard ${1:-HEAD~};\n}; f"
+	res = "!f() { : git branch ;\n echo moving from: `git rev-parse --short HEAD`;\n git reset --soft ${1:-HEAD~};\n}; f"
+	return = reh HEAD@{1}
+	# stash work
 	st = stash -u
 	sta = "!f() { : git stashes ;\nif [[ \"$#\" -eq 0 ]]; then\n  git stash apply stash@{0};\n  exit 0;\nfi\ngit stash apply $@;\n}; f"
 	stp = "!f() { : git stashes ;\nif [[ \"$#\" -eq 0 ]]; then\n  git stash pop stash@{0};\n  exit 0;\nfi\ngit stash pop $@;\n}; f"
 	std = "!f() { : git stashes ;\ngit stash drop $@;\n}; f"
-	ro = !git reset --hard origin/`git cb`
-	reh = "!f() { : git branch ;\n echo moving from: `git rev-parse --short HEAD`;\n git reset --hard ${1:-HEAD~};\n}; f"
-	res = "!f() {\n echo moving from: `git rev-parse --short HEAD`;\n git reset --soft ${1:-HEAD~};\n}; f"
-	l = log
+	sts = "!f() { : git stashes ;\ngit stash show $@;\n}; f"
+	stl = stash list
+	stash-count = rev-list --walk-reflogs --count --skip 1 refs/stash
+	set-stash-by-name = "!f() {\nSNUM=$(git stash list | grep ${1});\n\nif [[ -z \"${SNUM}\" ]]; then\n  echo \"stash not found\";\n  exit 1;\nfi\n\nif [[ `echo \"${SNUM}\" | grep -c \\$` -ne 1 ]]; then\n  echo \"error: multiple stashes found\";\n  echo \"${SNUM}\";\n  exit 1;\nfi\n\nSNUM=$(echo \"${SNUM}\" | grep -oP @\\{\\([0-9]+\\)\\} | grep -oP [0-9]+);\n\ngit stash apply $SNUM;\n}; f"
 
   # search
 	search-commits = !git rev-list --all | xargs git grep -F
@@ -46,29 +67,11 @@
 	search-stash = "!f() { #!/bin/bash\n\nif [ $# -ne 1 ] ; then\n  printf \"search-stash usage: exactly one search term must be passed in as an argument.\\n\";\n  exit 1;\nfi\n\nSTASH_COUNT=`git stash-count`;\n\nfor n in `seq ${STASH_COUNT}`\ndo\n  RESULT=$(git stash show -p stash@{${n}} | grep \"$1\")\n  if [ -n \"${RESULT}\" ] ; then\n    echo \"${RESULT}\"$'\\nFound in stash: '${n}$'.\\n---\\n';\n  fi\ndone;\n\nprintf \"done\\n\"; }; f"
 	ss = search-stash
 	search-aliases = "!f() {\necho implement me pls 1>&2;\nexit 1;  \n}; f"
+	sa = search-aliases
 
   # work
-	setconfigoptions = "!f() {\nSNUM=$(git stash list | grep ${1:-ConfigOptions} | grep -oP @\\{\\([0-9]+\\)\\} | grep -oP [0-9]+);\ngit stash apply $SNUM;\n}; f"
+	setconfigoptions = set-stash-by-name ConfigOptions
 	days-work = "!f() {\nDATE=`date --date ${1:-today}`;\nAFTER=`date --date ${1:-today} +'%m-%d-%Y 00:00:00'`;\nBEFORE=`date --date ${2:-\"$DATE +1 day\"} \\\n  +\"%m-%d-%Y $(if [[ -z $2 ]] ; then echo 00:00:00 ; else echo 23:59:59; fi)\"`;\n\ngit log \\\n  --walk-reflogs \\\n  --oneline \\\n  --after=\"$AFTER\" \\\n  --before=\"$BEFORE\" \\\n  --color \\\n  --date=format:'%m/%d %l:%M%p' \\\n  --pretty=\"%C(yellow)%h%C(reset) %Cred%gd%C(reset) %<($((((`tput cols`-24)*6)/10)),trunc)%gs%C(bold yellow)%<($((((`tput cols`-24)*4)/10)),trunc)%d%C(reset)\" \\\n  HEAD | sed 's/HEAD@{\\(.*\\)}/\\1/' | less -R;\n}; f"
 	genpw = "!f() {\ntr -dc 'A-Za-z0-9!\"#$%&'\\''()*+,-./:;<=>?@[\\]^_`{|}~' </dev/urandom | head -c 13  ; echo;\n}; f"
-	stl = stash list
-	stash-count = rev-list --walk-reflogs --count --skip 1 refs/stash
 	diffdir = "!f() {\ngit diff --name-only \"$@\" | while read filename; do\n  git difftool -y \"$1\" -- \"$filename\" &\ndone\n}; f"
-	sts = "!f() { : git stashes ;\ngit stash show $@;\n}; f"
-	stash-save = "!f() {\nfoingo;\n}; f"
-	bada = boingus
-	boingus = "!f() { echo boingus; }; f"
-	which-branch = name-rev
-	s = status
-	ls = s
-	b = branch
-	cp = cherry-pick
-	br = branch
-	rl = reflog
-	return = reh HEAD@{1}
-	rb = rebase
-	alias-stats = "!f() {\n  declare -A alias_map;\n  declare -A count_map;\n  local aliases=( $(git explain-all) );\n  local arr_count=0;\n\n  for alias in ${aliases[@]}; do\n    count=$(git count $alias);\n    alias_map[$alias]=${count};\n\n    if [[ -z \"${count_map[${count}]}\" ]]; then\n      count_map[${count}]=$alias;\n    else\n      if [[ -n \"`echo \"${count_map[${count}]}\" | grep -P 'arr\\d+'`\" ]]; then\n        # this value points to an array\n\ttemp=${!count_map[${count}]};\n\ttemp+=( $alias );\n        eval ${count_map[${count}]}=\\${temp[@]}; \n        unset temp;\n      else\n        var=\"arr${arr_count}\";\n        declare -a ${var};\n        current_alias=${count_map[${count}]};\n\n        count_map[${count}]=${var};\n\ttemp=${!var};\n\ttemp+=( \"${current_alias}\" $alias );\n        eval ${var}=\\${temp[@]};\n        unset temp;\n        ((arr_count+=1));\n      fi\n    fi\n  done\n\n\n  local sorted_counts=( `for key in \"${!count_map[@]}\"; do echo \"${key}\"; done | sort -n --reverse;` );\n\n\n  for i in $(seq 0 $(( ${#count_map[@]} - 1 ))); do\n    count=${sorted_counts[$i]};\n    key=${count_map[$count]};\n    if [[ -n \"`echo \"${key}\" | grep -P 'arr\\d+'`\" ]]; then\n      for alias in \"${!key}\"; do\n        echo ${alias}: ${count};\n      done      \n    else\n      echo ${key}: ${count};\n    fi\n  done\n\n  unset count_map alias_map sorted_aliases aliases;\n}; f"
-	count = "!f() { : git alias ;\nif [[ $# -ne 1 ]]; then\n  echo count usage: exactly one alias must be passed;\n  exit 1;\nfi\n\nCOUNT=`cat ~/.bash_history | grep -P \"git $1\\b\" -c`;\necho ${COUNT};\n\nexit 0;\n}; f"
-	top = "!f() {\n  git alias-stats | head -${1:-5};\n}; f"
-	r = reset
-	good = "!f() { echo git good!; }; f"
+	bada = "!f() { echo boingus; }; f"
