@@ -16,6 +16,7 @@
 	ee = explain-all # list all aliases
 	list-all = explain-all # list all aliases
 	explain-all-verbose = !git config --list | grep -oP '(?<=alias\\.).*(?==)' | xargs -d\\\\n -n1 git e | less -R
+	list-all-verbose = explain-all-verbose
 	eee = explain-all-verbose # pretty-print all aliases' substitutions with titles
 	set = "!f() { #!/bin/bash\n\nif [ $# -ne 2 ] ; then\n  echo 'set usage: exactly two terms must be passed in as arguments.';\n  exit 1;\nfi\n\ngit config --global alias.\"$1\" \"$2\" && git explain $1 || echo \"Alias not set.\" && exit 1; }; f"
 	unset = "!f() { : git alias ;\n\nif [ $# -ne 1 ] ; then\n  echo 'unset usage: exactly one term must be passed in as an argument.';\n  exit 1;\nfi\n\ngit config --global --unset alias.\"$1\"; }; f"
@@ -27,14 +28,14 @@
 	wrap-sh = "!f() {\nTERM=\"$(git e $1 | grep -oP \\(\\?\\<=\\!\\).*\\.sh)\";\n\nif [[ -z $TERM ]]; then echo \"wrap-sh usage: one existing file-wrapper alias must be passed in\"; exit 1; fi\nif [[ ! -e $TERM ]]; then echo \"file $TERM not found\"; exit 1; fi\n\nSCRIPT=`cat \"$TERM\"`; SC=';'; \ngit set $1 \"!f() { $SCRIPT }$SC f\";}; f"
 	alias-stats = "!f() {\n  declare -A alias_map;\n  declare -A count_map;\n  local aliases=( $(git explain-all) );\n  local arr_count=0;\n\n  for alias in ${aliases[@]}; do\n    count=$(git count $alias);\n    alias_map[$alias]=${count};\n\n    if [[ -z \"${count_map[${count}]}\" ]]; then\n      count_map[${count}]=$alias;\n    else\n      if [[ -n \"`echo \"${count_map[${count}]}\" | grep -P 'arr\\d+'`\" ]]; then\n        # this value points to an array\n\ttemp=${!count_map[${count}]};\n\ttemp+=( $alias );\n        eval ${count_map[${count}]}=\\${temp[@]}; \n        unset temp;\n      else\n        var=\"arr${arr_count}\";\n        declare -a ${var};\n        current_alias=${count_map[${count}]};\n\n        count_map[${count}]=${var};\n\ttemp=${!var};\n\ttemp+=( \"${current_alias}\" $alias );\n        eval ${var}=\\${temp[@]};\n        unset temp;\n        ((arr_count+=1));\n      fi\n    fi\n  done\n\n\n  local sorted_counts=( `for key in \"${!count_map[@]}\"; do echo \"${key}\"; done | sort -n --reverse;` );\n\n\n  for i in $(seq 0 $(( ${#count_map[@]} - 1 ))); do\n    count=${sorted_counts[$i]};\n    key=${count_map[$count]};\n    if [[ -n \"`echo \"${key}\" | grep -P 'arr\\d+'`\" ]]; then\n      for alias in \"${!key}\"; do\n        echo ${alias}: ${count};\n      done      \n    else\n      echo ${key}: ${count};\n    fi\n  done\n\n  unset count_map alias_map sorted_aliases aliases;\n}; f"
 	count = "!f() { : git alias ;\nif [[ $# -ne 1 ]]; then\n  echo count usage: exactly one alias must be passed;\n  exit 1;\nfi\n\nCOUNT=`cat ~/.bash_history | grep -P \"git $1\\b\" -c`;\necho ${COUNT};\n\nexit 0;\n}; f"
-	top = "!f() {\n  git alias-stats | head -${1:-5};\n}; f" # top N used aliases
+	top = "!f() {\n  git alias-stats | head -${1:-5};\n}; f"
 
   # ease-of-use
 	co = checkout
 	cob = co --track -b
 	current-branch = branch --show-current
 	cb = current-branch
-	po = !git push origin `git cb`
+	po = "!f() {\n  ! git check-wip && exit 1;\n  git push origin `git cb`;\n}; f"
 	l = log
 	which-branch = name-rev
 	s = status
@@ -45,21 +46,20 @@
 	rl = reflog
 	rb = rebase
 	# resets
-	r = reset
 	re = reset
 	ro = !git reset --hard origin/`git cb`
-	reh = "!f() { : git branch ;\n echo moving from: `git rev-parse --short HEAD`;\n git reset --hard ${1:-HEAD~};\n}; f"
-	res = "!f() { : git branch ;\n echo moving from: `git rev-parse --short HEAD`;\n git reset --soft ${1:-HEAD~};\n}; f"
+	reh = "!f() { : git branch ;\n echo moving from: `git rev-parse --short HEAD`;\n target=${1:-HEAD~};\n echo moving to: \"$target\";\n git reset --hard \"$target\";\n}; f"
+	res = "!f() { : git branch ;\n git tag -d last_pos;\n git tag last_pos;\n echo moving from: `git rev-parse --short HEAD`;\n git reset --soft ${1:-HEAD~};\n}; f"
 	return = reh HEAD@{1}
 	# stash work
 	st = stash -u
 	sta = "!f() { : git stashes ;\nif [[ \"$#\" -eq 0 ]]; then\n  git stash apply stash@{0};\n  exit 0;\nfi\ngit stash apply $@;\n}; f"
 	stp = "!f() { : git stashes ;\nif [[ \"$#\" -eq 0 ]]; then\n  git stash pop stash@{0};\n  exit 0;\nfi\ngit stash pop $@;\n}; f"
-	std = "!f() { : git stashes ;\ngit stash drop $@;\n}; f"
+	std = "!f() { : git stashes ;\nif [[ \"$#\" -eq 0 ]]; then\n  git stash drop stash@{0};\n  exit 0;\nfi\ngit stash drop $@;\n}; f"
 	sts = "!f() { : git stashes ;\ngit stash show $@;\n}; f"
 	stl = stash list
 	stash-count = rev-list --walk-reflogs --count --skip 1 refs/stash
-	set-stash-by-name = "!f() {\nSNUM=$(git stash list | grep ${1});\n\nif [[ -z \"${SNUM}\" ]]; then\n  echo \"stash not found\";\n  exit 1;\nfi\n\nif [[ `echo \"${SNUM}\" | grep -c \\$` -ne 1 ]]; then\n  echo \"error: multiple stashes found\";\n  echo \"${SNUM}\";\n  exit 1;\nfi\n\nSNUM=$(echo \"${SNUM}\" | grep -oP @\\{\\([0-9]+\\)\\} | grep -oP [0-9]+);\n\ngit stash apply $SNUM;\n}; f"
+	set-stash-by-name = "!f() {\n  snum=$(git get-stash-by-name ${1});\n  if [[ $? -eq 0 ]]; then\n    git stash apply $snum;\n  else\n    echo \"${snum}\";\n  fi\n}; f"
 
   # search
 	search-commits = !git rev-list --all | xargs git grep -F
@@ -71,7 +71,70 @@
 
   # work
 	setconfigoptions = set-stash-by-name ConfigOptions
-	days-work = "!f() {\nDATE=`date --date ${1:-today}`;\nAFTER=`date --date ${1:-today} +'%m-%d-%Y 00:00:00'`;\nBEFORE=`date --date ${2:-\"$DATE +1 day\"} \\\n  +\"%m-%d-%Y $(if [[ -z $2 ]] ; then echo 00:00:00 ; else echo 23:59:59; fi)\"`;\n\ngit log \\\n  --walk-reflogs \\\n  --oneline \\\n  --after=\"$AFTER\" \\\n  --before=\"$BEFORE\" \\\n  --color \\\n  --date=format:'%m/%d %l:%M%p' \\\n  --pretty=\"%C(yellow)%h%C(reset) %Cred%gd%C(reset) %<($((((`tput cols`-24)*6)/10)),trunc)%gs%C(bold yellow)%<($((((`tput cols`-24)*4)/10)),trunc)%d%C(reset)\" \\\n  HEAD | sed 's/HEAD@{\\(.*\\)}/\\1/' | less -R;\n}; f"
+	days-work = "!f() {\nDATE=`date --date \"${1:-today}\"`;\nAFTER=`date --date \"${1:-today}\" +'%m-%d-%Y 00:00:00'`;\nBEFORE=`date --date ${2:-\"$DATE +1 day\"} \\\n  +\"%m-%d-%Y $(if [[ -z $2 ]] ; then echo 00:00:00 ; else echo 23:59:59; fi)\"`;\n\ngit log \\\n  --walk-reflogs \\\n  --oneline \\\n  --after=\"$AFTER\" \\\n  --before=\"$BEFORE\" \\\n  --color \\\n  --date=format:'%m/%d %l:%M%p' \\\n  --pretty=\"%C(yellow)%h%C(reset) %Cred%gd%C(reset) %<($((((`tput cols`-24)*6)/10)),trunc)%gs%C(bold yellow)%<($((((`tput cols`-24)*4)/10)),trunc)%d%C(reset)\" \\\n  HEAD | sed 's/HEAD@{\\(.*\\)}/\\1/' | less -R;\n}; f"
 	genpw = "!f() {\ntr -dc 'A-Za-z0-9!\"#$%&'\\''()*+,-./:;<=>?@[\\]^_`{|}~' </dev/urandom | head -c 13  ; echo;\n}; f"
 	diffdir = "!f() {\ngit diff --name-only \"$@\" | while read filename; do\n  git difftool -y \"$1\" -- \"$filename\" &\ndone\n}; f"
 	bada = "!f() { echo boingus; }; f"
+	check-todos = "!f() {\n  echo boingus;\n}; f"
+	wip = "!f() {\n  git add `git pwd`;\n  # accept commit options\n  git commit -m WIP ${1};\n}; f"
+	pwd = "!f(){ pwd; }; f"
+	rehh = "!f(){\n  git wip;\n  git reh;\n}; f"
+	ll = log --oneline
+	ret = return
+	weeks-work = days-work \"last week\" today
+	get-stash-by-name = "!f() {\nSNUM=$(git stash list | grep ${1});\n\nif [[ -z \"${SNUM}\" ]]; then\n  echo \"stash not found\";\n  exit 1;\nfi\n\nif [[ `echo \"${SNUM}\" | grep -c \\$` -ne 1 ]]; then\n  echo \"error: multiple stashes found\";\n  echo \"${SNUM}\";\n  exit 1;\nfi\n\necho \"${SNUM}\" | grep -oP @\\{\\([0-9]+\\)\\} | grep -oP [0-9]+;\nexit 0;\n}; f"
+	editconfigoptions = edit-stash-by-name ConfigOptions
+	verify-num-args = 
+	edit-stash-by-name = "!f() {\n  if [[ $# -ne 1 ]]; then\n    echo usage: please supply 1 unique stash name.\n    exit 1;\n  fi\n\n  . \"$(git --exec-path)/git-sh-setup\";\n  require_clean_work_tree 'edit stash by name';\n\n  snum=`git get-stash-by-name \"${1}\"`;\n  [[ $? -ne 0 ]] && echo \"${snum}\" && exit 1;\n\n  full_name=`git get-stash-name-by-number $snum`;\n  git sta \"${snum}\" 1>/dev/null;\n  echo applying and dropping stash: `git std \"${snum}\" | grep -oP '\\(\\K\\w*'`;\n\n  echo Perform your changes now. Press any key to save the new stash.;\n  read -n 1 -s -r;\n\n  git stash push -u -m \"${full_name}\";\n  exit 0;\n}; f"
+	get-stash-name-by-number = "!f() {\n  if [[ $# -ne 1 || ! \"$1\" =~ ^[0-9]+$ ]]; then\n    echo 'usage: only one numeric argument allowed';\n    exit 1;\n  fi\n  git stl | grep -oP stash@{0.{1}:.* | grep -oP '}.* On [\\/\\.\\w-]+: \\K.*'\n#  git stl | grep -oP stash@{\"$1\".{1}:.* | grep -oP '}.* On \\w+: \\K.*';\n}; f"
+	cae = commit --amend --no-edit
+	stm = stash push -u -m
+	reb = rebase
+	rebi = rebase --interactive
+	scaffold-container = "!f() {\n  cd ${GIT_PREFIX:-.};\n  touch index.js\n  touch components.js\n  touch selectors.js;\n  touch actions.js;\n  touch constants.js;\n  touch reducer.js;\n  touch saga.js;\n  touch styles.scss;\n}; f"
+	refresh = "!f() { git pull origin `git cb`; }; f"
+	ref = refresh
+	test = "!f() {\n  ! git check-wip && exit 1;\n  echo nope brah;\n}; f"
+	check-wip = "!f() {\n  wip=$(git log origin/`git cb`..`git cb` --oneline | grep WIP);\n\n  if [[ -z \"$wip\" ]]; then\n    exit 0;\n  else\n    echo WIP detected. please fix\n    exit 1;\n  fi\n}; f"
+	pof = !git check-wip && git push --force origin `git cb`
+	git = "!f(){\n  args='';\n  while [[ ! -z \"$1\" ]]\n  do\n    args+=\" $1\";\n    shift;\n  done\n  [[ ! \"${args}\" = git* ]] && args='git'\"${args}\"\n  bash -c \"${args}\";\n};f"
+	commit-all = "!git add -A; git commit \"$@\""
+	ca = commit-all
+	m = merge
+	ae = --amend --no-edit
+	caae = !git ca --amend --no-edit
+	flip = "!f() {\necho nope && exit 1;\n  first=\"${1-HEAD}\";\n  second=${2-HEAD@{1}};\n\n  if ! git check-ref-format --allow-onelevel \"$first\"; then\n    echo \"$first\" is not a valid ref;\n    exit 1;\n  fi\n\n  if ! git check-ref-format --allow-onelevel \"$second\"; then\n    echo \"$second\" is not a valid ref;\n    exit 1;\n  fi\n\n  echo first: \"$first\"...second: \"$second\"\n}; f"
+	check = 
+	reset-head = reh HEAD
+	rh = reset-head
+	reset-origin-head = !git reh origin/`git cb`
+	roh = reset-origin-head
+	pr = pull --rebase
+	fa = fetch --all
+	p = pull
+	c = commit
+	puo = "!f() { git pull origin `git cb` $@; }; f"
+	puob = puo --rebase
+	caed = commit --amend
+	poh = "!f() { git pull origin `git cb`; }; f"
+	lp = l --first-parent
+	lop = log --oneline --first-parent
+	mc = m --continue
+	rbc = rb --continue
+	rba = rb --abort
+	ma = m --abort
+	fem = fetch origin uat:uat
+	cm = commit -m
+	fe = "!f() { : git branch ; git fetch origin \"$1\":\"$1\"; }; f"
+	rci = commit --allow-empty --message=\"restart ci\"
+	get-contributions = "!f() {\n#  if [[ $# -ne 1 ]]; then\n#    echo explain usage: exactly one term must be passed;\n#    exit 1;\n#  fi\n  local author=\"$1\";\n  shift;\n  git log --all --no-merges --ignore-blank-lines --author=\"$author\" --oneline --shortstat \"$@\" \\\n          -- \":(exclude,icase)*/rapid/Domain/Entities/*\" \\\n             \":(exclude,icase)*/rapid/Persistence/RapidContext.cs\" \\\n             \":(exclude,icase)*/slip/Domain/Entities/*\" \\\n             \":(exclude,icase)*/sql/packages/*\" \\\n             \":(exclude,icase)*/Data/Migrations/*\" \\\n             \":(exclude,icase)*/rapid/db/*\" \\\n             \":(exclude,icase)*package-lock.json\" \\\n             \":(exclude,icase)*.sln\" \\\n             \":(exclude,icase)*/rapid/db/*.xml\" \\\n             \":(exclude,icase)*.csproj\" \\\n             \":(exclude,icase)*.xsd\" \\\n             \":(exclude,icase)*.html\" \\\n             \":(exclude,icase)*/rapid/db/ChangeControl/*\";\n}; f"
+	get-contributors = "!f() {\n git log --format=\"%an\" | sort | uniq;\n}; f"
+	get-commits-by-size = "!f() {\n  if [[ $# -ne 1 ]]; then\n    echo explain usage: exactly one term must be passed;\n    exit 1;\n  fi\n\n  git get-contributions \"$1\" -z --format=\"%h\" \\\n    | tr -d '\\0' \\\n    | tac \\\n    | paste -d \" \"  - - \\\n    | grep -oP '\\d+ files? changed, \\K.*' \\\n    | sort -n \\\n    | tac \\\n    | less\n}; f"
+	get-total-contributions = "!f() {\n  if [[ $# -ne 1 ]]; then\n    echo explain usage: exactly one term must be passed;\n    exit 1;\n  fi\n\n  git get-contributions \"$1\" --pretty=tformat: \\\n    | grep -Po '((?<=, )(\\d+)(?= i))|((?<=, )(\\d+)(?= d))' \\\n    | paste -d \" \"  - - \\\n    | awk '{ add+=$1; remove+=$2; total+=$1+$2 } END { print total, \"+\"add, \"-\"remove }';\n}; f"
+	get-contributions-for-all-authors = "!f() {\n  IFS=$'\\n' \n  local contributors=( `git get-contributors` );\n\n  for contributor in ${contributors[@]}; do\n    echo `git get-total-contributions $contributor` - $contributor;\n  done | sort -n | tac\n}; f"
+	lo = log --oneline
+	puf = pull --ff-only
+	pur = pull --rebase
+	pum = pull --no-rebase
+[grep]
+	patternType = perl

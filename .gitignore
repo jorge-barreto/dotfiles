@@ -16,8 +16,15 @@
 !.config/redshift**
 !.config/rofi**
 !.config/scripts/**
+!.config/soma.fm/**
+
+!.gdbinit
+!.sqliterc
+!.Xmodmap
+!.Xresources
 
 !.bashrc
+!.bash_profile
 !.inputrc
 !.vimrc
 !.rc

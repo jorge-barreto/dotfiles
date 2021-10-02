@@ -1,7 +1,7 @@
 #!/bin/bash
 # simple script to disable screensavers
-LENGTH=1;
-DELAY=$((60*5));
+LENGTH=${1-1};
+DELAY=${2-$((60*5))};
 
 while true
 do

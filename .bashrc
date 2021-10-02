@@ -44,7 +44,9 @@ alias slasDuf="slasDu --force-recreate --build"
 alias slasDr="slasDu --force-recreate --build --no-deps"
 alias slasDd="slasD down"
 alias slasDl="slasD logs -f --tail='1000'"
-alias slasDb="slasD build --parallel && slasDu --force-recreate"
+slasDb() {
+	slasD build --parallel "$@" && slasDu --force-recreate "$@"
+}
 alias slasDufl="slasDuf && slasDl"
 alias slasDul="slasDu && slasDl"
 alias slasDbl="slasDb && slasDul"
@@ -60,8 +62,13 @@ alias slascul="slascu && slascl"
 alias slascufl="slascuf && slascl"
 alias slascbl="slascb && slascul"
 
-alias slasvpn="sudo openconnect --script /etc/vpnc/vpnc-script https://vulcan.fslso.com/ --servercert pin-sha256:DBApSF+E7U8jIwdJq/7yTarfC5N+ScJWT1hR3vQ4dPY="
+# alias slasvpn="sudo openconnect --script /etc/vpnc/vpnc-script https://vulcan.fslso.com/ --servercert pin-sha256:DBApSF+E7U8jIwdJq/7yTarfC5N+ScJWT1hR3vQ4dPY="
+alias slasvpn="sudo openconnect --protocol=gp https://harbor.fslso.com/"
 alias update_slas="cd ~/work && docker-compose pull"
+
+alias publish_jb_dev="/home/jbarreto/Documents/Projects/jb.dev/jb.blog/publish.sh"
+alias locate_service="/home/jbarreto/Documents/Projects/jb.dev/swarm_admin/scripts/locate_service.sh"
+alias locate_all_services="/home/jbarreto/Documents/Projects/jb.dev/swarm_admin/scripts/locate_all_services.sh"
 
 genpw() {
    tr -dc 'A-Za-z0-9!"#$%&'\''()*+,-./:;<=>?@[\\]^_\`{|}~' </dev/urandom | head -c ${1:-'16'}  ; echo ;
@@ -71,3 +78,4 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export HISTSIZE=20000
 export HISTFILESIZE=200000
 export EDITOR=vi
+
