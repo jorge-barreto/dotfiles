@@ -48,7 +48,7 @@
 	# resets
 	re = reset
 	ro = !git reset --hard origin/`git cb`
-	reh = "!f() { : git branch ;\n echo moving from: `git rev-parse --short HEAD`;\n target=${1:-HEAD~};\n echo moving to: \"$target\";\n git reset --hard \"$target\";\n}; f"
+	reh = "!f() { : git branch ;\n target=${1:-HEAD~};\n\n . \"$(git --exec-path)/git-sh-setup\";\n require_clean_work_tree \"reset --hard \"\"$target\";\n\n echo moving from: `git rev-parse --short HEAD`;\n echo moving to: \"$target\";\n git reset --hard \"$target\";\n}; f"
 	res = "!f() { : git branch ;\n git tag -d last_pos;\n git tag last_pos;\n echo moving from: `git rev-parse --short HEAD`;\n git reset --soft ${1:-HEAD~};\n}; f"
 	return = reh HEAD@{1}
 	# stash work
@@ -62,7 +62,7 @@
 	set-stash-by-name = "!f() {\n  snum=$(git get-stash-by-name ${1});\n  if [[ $? -eq 0 ]]; then\n    git stash apply $snum;\n  else\n    echo \"${snum}\";\n  fi\n}; f"
 
   # search
-	search-commits = !git rev-list --all | xargs git grep -F
+	search-commits = !git rev-list --all --reverse | xargs git grep -F
 	sc = search-commits
 	search-stash = "!f() { #!/bin/bash\n\nif [ $# -ne 1 ] ; then\n  printf \"search-stash usage: exactly one search term must be passed in as an argument.\\n\";\n  exit 1;\nfi\n\nSTASH_COUNT=`git stash-count`;\n\nfor n in `seq ${STASH_COUNT}`\ndo\n  RESULT=$(git stash show -p stash@{${n}} | grep \"$1\")\n  if [ -n \"${RESULT}\" ] ; then\n    echo \"${RESULT}\"$'\\nFound in stash: '${n}$'.\\n---\\n';\n  fi\ndone;\n\nprintf \"done\\n\"; }; f"
 	ss = search-stash
@@ -78,7 +78,6 @@
 	check-todos = "!f() {\n  echo boingus;\n}; f"
 	wip = "!f() {\n  git add `git pwd`;\n  # accept commit options\n  git commit -m WIP ${1};\n}; f"
 	pwd = "!f(){ pwd; }; f"
-	rehh = "!f(){\n  git wip;\n  git reh;\n}; f"
 	ll = log --oneline
 	ret = return
 	weeks-work = days-work \"last week\" today
@@ -95,7 +94,7 @@
 	refresh = "!f() { git pull origin `git cb`; }; f"
 	ref = refresh
 	test = "!f() {\n  ! git check-wip && exit 1;\n  echo nope brah;\n}; f"
-	check-wip = "!f() {\n  wip=$(git log origin/`git cb`..`git cb` --oneline | grep WIP);\n\n  if [[ -z \"$wip\" ]]; then\n    exit 0;\n  else\n    echo WIP detected. please fix\n    exit 1;\n  fi\n}; f"
+	check-wip = "!f() {\n  # assumes the last commit's author is me\n  wip=$(git log origin/`git cb`..`git cb` --oneline --grep WIP --author=\"`git get-contributor HEAD`\");\n\n  if [[ -z \"$wip\" ]]; then\n    exit 0;\n  else\n    echo WIP detected. please fix\n    exit 1;\n  fi\n}; f"
 	pof = !git check-wip && git push --force origin `git cb`
 	git = "!f(){\n  args='';\n  while [[ ! -z \"$1\" ]]\n  do\n    args+=\" $1\";\n    shift;\n  done\n  [[ ! \"${args}\" = git* ]] && args='git'\"${args}\"\n  bash -c \"${args}\";\n};f"
 	commit-all = "!git add -A; git commit \"$@\""
@@ -123,7 +122,7 @@
 	rbc = rb --continue
 	rba = rb --abort
 	ma = m --abort
-	fem = fetch origin uat:uat
+	fem = "!f(){\n  git fetch origin `git get-dev`:`git get-dev`\n}; f"
 	cm = commit -m
 	fe = "!f() { : git branch ; git fetch origin \"$1\":\"$1\"; }; f"
 	rci = commit --allow-empty --message=\"restart ci\"
@@ -133,8 +132,23 @@
 	get-total-contributions = "!f() {\n  if [[ $# -ne 1 ]]; then\n    echo explain usage: exactly one term must be passed;\n    exit 1;\n  fi\n\n  git get-contributions \"$1\" --pretty=tformat: \\\n    | grep -Po '((?<=, )(\\d+)(?= i))|((?<=, )(\\d+)(?= d))' \\\n    | paste -d \" \"  - - \\\n    | awk '{ add+=$1; remove+=$2; total+=$1+$2 } END { print total, \"+\"add, \"-\"remove }';\n}; f"
 	get-contributions-for-all-authors = "!f() {\n  IFS=$'\\n' \n  local contributors=( `git get-contributors` );\n\n  for contributor in ${contributors[@]}; do\n    echo `git get-total-contributions $contributor` - $contributor;\n  done | sort -n | tac\n}; f"
 	lo = log --oneline
-	puf = pull --ff-only
 	pur = pull --rebase
 	pum = pull --no-rebase
+	puff = pull --ff-only
+	wipp = "!f(){\n  git wip;\n  git reh;\n}; f"
+	l1 = log -1
+	clean-head = "!f(){\n  git co HEAD -- `git rev-parse --show-toplevel`\n}; f"
+	ch = clean-head
+	get-contributor = "!f() { : git log ;\nif [[ $# -ne 1 ]]; then\n  echo explain usage: exactly one term must be passed;\n  exit 1;\nfi\n\ngit log --format=\"%an\" -1 \"$1\"\n}; f"
+	wb = which-branch
+	scoby = echo scoby loves you too
+	echo = "!f() { echo \"$@\"; }; f"
+	get-dev = "!f() {\n  if [[ -z `git config --get --local core.dev-branch` ]]; then\n    >&2 echo WARNING: develop branch not set. Defaulting to 'main'.\n    git config --local core.dev-branch main\n  fi\n\n  git config --get --local core.dev-branch\n}; f"
+	snapshot = "!f() {\n  git wip;\n  git res;\n  git reset -- `git rev-parse --show-toplevel`;\n}; f"
 [grep]
 	patternType = perl
+[credential "https://github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[init]
+	defaultBranch = main
